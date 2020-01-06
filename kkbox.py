@@ -11,7 +11,8 @@ import csv
 print('preprocess songs data')
 
 # read songs
-songs = pd.read_csv('songs.csv')
+songs = pd.read_csv(open(
+    'songs.csv', newline=''))
 
 # pop useless attributes
 songs.pop('artist_name')
@@ -111,6 +112,7 @@ pretest = pd.read_csv(
 # pop ans of training data
 ans = pretrain.pop('target')
 
+pretest.pop('id')
 # merge train and test to normalize
 total = pretrain.append(pretest)
 
@@ -125,7 +127,7 @@ total.loc[total['source_type'].isnull(
 ), 'source_type'] = 'source_type_none'
 
 print('preprocess of total done')
-
+print('total na', total.isnull().sum().sum())
 # get_dummy
 total = pd.get_dummies(data=total, columns=[
                        'source_system_tab', 'source_screen_name', 'source_type'])
@@ -136,15 +138,38 @@ members = pd.read_csv(
 
 songs = pd.read_csv(
     'songsdummy.csv', index_col='song_id')
+print('songs', songs.isnull().sum().sum())
+
 
 # merge total and songs,members
-total.set_index('msno', inplace=True)
-total = total.join(members)
+
 total.set_index('song_id', inplace=True)
 total = total.join(songs)
+print('join songs', total.isnull().sum().sum())
+
+total.set_index('msno', inplace=True)
+total = total.join(members)
+print('join members', total.isnull().sum().sum())
 
 print('already merge songs,members')
 
+train = total[:pretrain.shape[0]]
+print('train before scale', train.isnull().sum().sum())
+test = total[pretrain.shape[0]:]
+print('test before scale', test.isnull().sum().sum())
+
+
+# process train
+train = pd.concat([train, ans], axis=1)
+train.dropna(inplace=True)
+ans = train.pop('target')
+
+
+# process test
+test.fillna(value=0, inplace=True)
+
+
+total = train.append(test)
 
 # scalization
 scaler = MinMaxScaler()
@@ -153,14 +178,17 @@ scaler.fit(total)
 
 # sep total to train, test
 train = total[:pretrain.shape[0]]
+
 test = total[pretrain.shape[0]:]
 
 
 # can modify variable
-clf = linear_model.SGDClassifier(n_jobs=-1)
+clf = linear_model.SGDClassifier(n_jobs=-1, verbose=1)
 clf.fit(train, ans.astype('int'))
 result = clf.predict(test)
 
 # output result
+result = pd.DataFrame({'id': [str(
+    i) for i in range(0, len(result))], 'target': result}, columns=['id', 'target'])
 result.to_csv('result.csv',
               index=False, quoting=2)
